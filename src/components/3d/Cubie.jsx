@@ -1,5 +1,8 @@
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
+import useTeachingStore from '../../store/useTeachingStore';
 
 // Map logical facelet characters to hex colors
 const COLOR_MAP = {
@@ -24,26 +27,57 @@ const getFaceIndices = (x, y, z) => {
   return indices;
 };
 
+const WHITE = new THREE.Color('#ffffff');
+
 // Sticker component for a single face of a cubie
-const Sticker = ({ position, rotation, color, isHighlighted = true }) => {
+const Sticker = ({ position, rotation, color, dim = false, glow = 0, flashAt = 0 }) => {
+  const mesh = useRef();
+  const mat = useRef();
+  const base = useMemo(() => new THREE.Color(color || '#000000'), [color]);
+  const shown = useMemo(() => {
+    if (!dim) return color || '#000000';
+    const hsl = base.getHSL({});
+    return '#' + new THREE.Color().setHSL(hsl.h, hsl.s * 0.3, hsl.l).getHexString();
+  }, [base, color, dim]);
+
+  useFrame(({ clock }) => {
+    const sinceFlash = flashAt ? (performance.now() - flashAt) / 600 : 1;
+    const flash = sinceFlash < 1 ? Math.sin(Math.PI * sinceFlash) : 0;
+    const pulse = glow ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 6) : 0;
+    mat.current.emissive.copy(base).lerp(WHITE, Math.max(flash, glow * pulse * 0.4));
+    mat.current.emissiveIntensity = dim ? 0 : 0.2 + glow * pulse + flash;
+    mesh.current.scale.setScalar(1 - 0.12 * glow * pulse);
+  });
+
   return (
-    <mesh position={position} rotation={rotation}>
+    <mesh ref={mesh} position={position} rotation={rotation}>
       <planeGeometry args={[0.9, 0.9]} />
-      <meshStandardMaterial 
-        color={color || '#000000'}
+      <meshStandardMaterial
+        ref={mat}
+        color={shown}
         transparent
-        opacity={isHighlighted ? 1 : 0.2} 
-        emissive={isHighlighted && color ? color : '#000000'}
-        emissiveIntensity={isHighlighted && color ? 0.2 : 0}
-        side={THREE.DoubleSide} 
+        opacity={dim ? 0.25 : 1}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );
 };
 
-export const Cubie = ({ x, y, z, stateStr, highlightedCubies }) => {
+export const Cubie = ({ x, y, z, stateStr, highlightedPieces }) => {
   const indices = getFaceIndices(x, y, z);
-  const isHighlighted = highlightedCubies.size === 0 || highlightedCubies.has(`${x},${y},${z}`);
+  const glowPieces = useTeachingStore(state => state.glowPieces);
+  const brightGlow = useTeachingStore(state => state.hintLevel >= 2);
+  const flashAt = useTeachingStore(state => state.flashAt);
+  // Per-sticker look: dimmed outside the highlighted set, pulsing on the target piece.
+  const look = (i) => {
+    const dim = highlightedPieces?.size > 0 && !highlightedPieces.has(i);
+    return {
+      color: COLOR_MAP[stateStr[i]],
+      dim,
+      glow: glowPieces.has(i) ? (brightGlow ? 1 : 0.4) : 0,
+      flashAt: dim ? 0 : flashAt,
+    };
+  };
 
   return (
     <group position={[x * 1.05, y * 1.05, z * 1.05]}>
@@ -53,14 +87,14 @@ export const Cubie = ({ x, y, z, stateStr, highlightedCubies }) => {
       </RoundedBox>
 
       {/* Faces */}
-      {indices.U !== null && <Sticker position={[0, 0.51, 0]} rotation={[-Math.PI / 2, 0, 0]} color={COLOR_MAP[stateStr[indices.U]]} isHighlighted={isHighlighted} />}
-      {indices.D !== null && <Sticker position={[0, -0.51, 0]} rotation={[Math.PI / 2, 0, 0]} color={COLOR_MAP[stateStr[indices.D]]} isHighlighted={isHighlighted} />}
+      {indices.U !== null && <Sticker position={[0, 0.51, 0]} rotation={[-Math.PI / 2, 0, 0]} {...look(indices.U)} />}
+      {indices.D !== null && <Sticker position={[0, -0.51, 0]} rotation={[Math.PI / 2, 0, 0]} {...look(indices.D)} />}
       
-      {indices.F !== null && <Sticker position={[0, 0, 0.51]} rotation={[0, 0, 0]} color={COLOR_MAP[stateStr[indices.F]]} isHighlighted={isHighlighted} />}
-      {indices.B !== null && <Sticker position={[0, 0, -0.51]} rotation={[0, Math.PI, 0]} color={COLOR_MAP[stateStr[indices.B]]} isHighlighted={isHighlighted} />}
+      {indices.F !== null && <Sticker position={[0, 0, 0.51]} rotation={[0, 0, 0]} {...look(indices.F)} />}
+      {indices.B !== null && <Sticker position={[0, 0, -0.51]} rotation={[0, Math.PI, 0]} {...look(indices.B)} />}
       
-      {indices.R !== null && <Sticker position={[0.51, 0, 0]} rotation={[0, Math.PI / 2, 0]} color={COLOR_MAP[stateStr[indices.R]]} isHighlighted={isHighlighted} />}
-      {indices.L !== null && <Sticker position={[-0.51, 0, 0]} rotation={[0, -Math.PI / 2, 0]} color={COLOR_MAP[stateStr[indices.L]]} isHighlighted={isHighlighted} />}
+      {indices.R !== null && <Sticker position={[0.51, 0, 0]} rotation={[0, Math.PI / 2, 0]} {...look(indices.R)} />}
+      {indices.L !== null && <Sticker position={[-0.51, 0, 0]} rotation={[0, -Math.PI / 2, 0]} {...look(indices.L)} />}
     </group>
   );
 };

@@ -13,9 +13,8 @@ for (let x = -1; x <= 1; x++) {
   }
 }
 
-export const CubeRenderer = () => {
+export const CubeRenderer = ({ highlightedPieces, flipped = false }) => {
   const cubeState = useCubeStore(state => state.cubeState);
-  const highlightedCubies = useCubeStore(state => state.highlightedCubies);
 
   return (
     <div className="w-full h-full bg-slate-900">
@@ -24,13 +23,14 @@ export const CubeRenderer = () => {
         <directionalLight position={[10, 10, 10]} intensity={1} />
         <directionalLight position={[-10, -10, -10]} intensity={0.5} />
         
-        <group>
+        {/* flipped: shown yellow-side up (half turn about the front-back axis) */}
+        <group rotation={[0, 0, flipped ? Math.PI : 0]}>
           {positions.map(([x, y, z]) => (
             <Cubie 
               key={`${x}-${y}-${z}`} 
               x={x} y={y} z={z} 
               stateStr={cubeState} 
-              highlightedCubies={highlightedCubies} 
+              highlightedPieces={highlightedPieces}
             />
           ))}
         </group>
